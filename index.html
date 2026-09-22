@@ -101,10 +101,14 @@
   <h1>scuba</h1>
   <div class="right">
     <a href="https://sumois.me/">sumois.me</a>
-    <button id="music">&#9834; music</button>
+    <button id="music" title="Song off plays each clip's own sound">&#9834; song off</button>
   </div>
 </div>
 <div class="feed">
+  <section>
+    <video src="agent-clip.mp4" poster="agent-clip-poster.jpg" muted loop playsinline preload="metadata"></video>
+    <p class="caption">Main character energy.</p>
+  </section>
   <section>
     <video src="ear-scratches.mp4" poster="ear-scratches-poster.jpg" muted loop playsinline preload="metadata"></video>
     <p class="caption">Ear scratches, eyes closed.</p>
@@ -182,7 +186,7 @@
     <p class="caption">Front row seat to the sunset.</p>
   </section>
 </div>
-<p class="hint"><span class="v">scroll &darr;</span><span class="h">scroll &rarr;</span></p>
+<p class="hint"><span class="v">scroll &darr;</span><span class="h">scroll &rarr;</span> &middot; tap for sound</p>
 <p class="credit">&#9834; <a href="https://incompetech.com">"Fluffing a Duck" &mdash; Kevin MacLeod</a>, CC BY 4.0</p>
 <audio id="tune" src="music.mp3" loop preload="none"></audio>
 <script>
@@ -191,19 +195,42 @@
   const videos = document.querySelectorAll('video');
   const horizontal = () => matchMedia('(min-width: 768px) and (orientation: landscape)').matches;
 
+  const tune = document.getElementById('tune');
+  const btn = document.getElementById('music');
+
+  // The song and a clip's own audio never play together: the song wins while it's on.
+  // Browsers only allow unmuted playback after a gesture, so clips stay muted until one happens.
+  let songOn = false, unlocked = false;
+  const applyAudio = () => videos.forEach(v => { v.muted = songOn || !unlocked || v.paused; });
+
   const observer = new IntersectionObserver(entries => {
     for (const e of entries) {
-      if (e.isIntersecting) e.target.play().catch(() => {});
-      else e.target.pause();
+      if (e.isIntersecting) {
+        e.target.muted = songOn || !unlocked;
+        e.target.play().catch(() => { e.target.muted = true; e.target.play().catch(() => {}); });
+      } else {
+        e.target.pause();
+        e.target.muted = true;
+      }
     }
   }, { threshold: 0.6 });
   videos.forEach(v => observer.observe(v));
 
-  const tune = document.getElementById('tune');
-  const btn = document.getElementById('music');
-  btn.addEventListener('click', () => {
-    if (tune.paused) { tune.volume = 0.6; tune.play(); btn.classList.add('on'); }
-    else { tune.pause(); btn.classList.remove('on'); }
+  addEventListener('pointerdown', () => {
+    if (unlocked) return;
+    unlocked = true;
+    applyAudio();
+  }, { once: true });
+
+  btn.addEventListener('click', e => {
+    e.stopPropagation();
+    songOn = !songOn;
+    if (songOn) { tune.volume = 0.6; tune.play().catch(() => {}); }
+    else { tune.pause(); }
+    unlocked = true;
+    btn.classList.toggle('on', songOn);
+    btn.textContent = songOn ? '♪ song on' : '♪ song off';
+    applyAudio();
   });
 
   // Vertical mouse wheel drives the sideways feed on desktop.
