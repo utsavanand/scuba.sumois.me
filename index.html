@@ -19,6 +19,7 @@
     align-items: center;
     justify-content: center;
     position: relative;
+    flex-shrink: 0;
   }
   video, .feed img {
     height: 100%;
@@ -33,6 +34,22 @@
     color: #f2f2f2;
     text-shadow: 0 1px 8px rgba(0,0,0,0.8);
     pointer-events: none;
+  }
+  /* Desktop: the feed runs sideways instead */
+  @media (min-width: 768px) and (orientation: landscape) {
+    .feed {
+      display: flex;
+      flex-direction: row;
+      overflow-y: hidden;
+      overflow-x: scroll;
+      scroll-snap-type: x mandatory;
+    }
+    section { width: 100vw; }
+    video, .feed img { max-height: 100dvh; }
+    .hint .v { display: none; }
+  }
+  @media not ((min-width: 768px) and (orientation: landscape)) {
+    .hint .h { display: none; }
   }
   .top {
     position: fixed;
@@ -69,6 +86,14 @@
     pointer-events: none;
   }
   @keyframes fade { from { opacity: 0.9; } to { opacity: 0.25; } }
+  .credit {
+    position: fixed;
+    bottom: 0.6rem; right: 0.8rem;
+    color: #55555c;
+    font-size: 0.65rem;
+    z-index: 2;
+  }
+  .credit a { color: #55555c; }
 </style>
 </head>
 <body>
@@ -157,9 +182,15 @@
     <p class="caption">Front row seat to the sunset.</p>
   </section>
 </div>
-<p class="hint">scroll &darr;</p>
+<p class="hint"><span class="v">scroll &darr;</span><span class="h">scroll &rarr;</span></p>
+<p class="credit">&#9834; <a href="https://incompetech.com">"Fluffing a Duck" &mdash; Kevin MacLeod</a>, CC BY 4.0</p>
+<audio id="tune" src="music.mp3" loop preload="none"></audio>
 <script>
+  const feed = document.querySelector('.feed');
+  const sections = document.querySelectorAll('section');
   const videos = document.querySelectorAll('video');
+  const horizontal = () => matchMedia('(min-width: 768px) and (orientation: landscape)').matches;
+
   const observer = new IntersectionObserver(entries => {
     for (const e of entries) {
       if (e.isIntersecting) e.target.play().catch(() => {});
@@ -168,63 +199,35 @@
   }, { threshold: 0.6 });
   videos.forEach(v => observer.observe(v));
 
-  // Music-box loop, synthesized on-device so there's no track file or license to carry.
+  const tune = document.getElementById('tune');
   const btn = document.getElementById('music');
-  let ctx = null, timer = null, step = 0, nextTime = 0;
-  const C=523.25, D=587.33, E=659.25, G=784.0, A=880.0, hiC=1046.5, hiE=1318.5;
-  const melody = [
-    E, G, A, hiC, A, G, E, D,
-    C, E, G, A, G, E, D, 0,
-    E, G, A, hiC, hiE, hiC, A, G,
-    A, G, E, D, C, D, C, 0
-  ];
-  const bass = [261.63, 196.0, 220.0, 196.0];
-  const stepDur = 0.28;
-
-  function pluck(freq, t, vol, decay) {
-    const osc = ctx.createOscillator();
-    const shimmer = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = 'triangle';
-    osc.frequency.value = freq;
-    shimmer.type = 'sine';
-    shimmer.frequency.value = freq * 2.001;
-    const sg = ctx.createGain();
-    sg.gain.value = 0.25;
-    shimmer.connect(sg).connect(gain);
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    gain.gain.setValueAtTime(0, t);
-    gain.gain.linearRampToValueAtTime(vol, t + 0.012);
-    gain.gain.exponentialRampToValueAtTime(0.0001, t + decay);
-    osc.start(t); osc.stop(t + decay);
-    shimmer.start(t); shimmer.stop(t + decay);
-  }
-
-  function schedule() {
-    while (nextTime < ctx.currentTime + 0.4) {
-      const note = melody[step % melody.length];
-      if (note) pluck(note, nextTime, 0.16, 1.6);
-      if (step % 8 === 0) pluck(bass[(step / 8) % 4 | 0], nextTime, 0.09, 2.2);
-      nextTime += stepDur;
-      step++;
-    }
-  }
-
   btn.addEventListener('click', () => {
-    if (!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
-    if (timer) {
-      clearInterval(timer); timer = null;
-      ctx.suspend();
-      btn.classList.remove('on');
-    } else {
-      ctx.resume();
-      nextTime = Math.max(nextTime, ctx.currentTime + 0.05);
-      schedule();
-      timer = setInterval(schedule, 150);
-      btn.classList.add('on');
-    }
+    if (tune.paused) { tune.volume = 0.6; tune.play(); btn.classList.add('on'); }
+    else { tune.pause(); btn.classList.remove('on'); }
   });
+
+  // Vertical mouse wheel drives the sideways feed on desktop.
+  feed.addEventListener('wheel', e => {
+    if (horizontal() && Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+      e.preventDefault();
+      feed.scrollBy({ left: e.deltaY });
+    }
+  }, { passive: false });
+
+  // Auto-advance after 6s of no interaction; any input hands control back.
+  let lastInteract = Date.now();
+  ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(ev =>
+    addEventListener(ev, () => { lastInteract = Date.now(); }, { passive: true }));
+
+  setInterval(() => {
+    if (Date.now() - lastInteract < 6000) return;
+    const size = horizontal() ? feed.clientWidth : feed.clientHeight;
+    const pos = horizontal() ? feed.scrollLeft : feed.scrollTop;
+    const next = (Math.round(pos / size) + 1) % sections.length;
+    feed.scrollTo(horizontal()
+      ? { left: next * size, behavior: next ? 'smooth' : 'auto' }
+      : { top: next * size, behavior: next ? 'smooth' : 'auto' });
+  }, 5000);
 </script>
 </body>
 </html>
